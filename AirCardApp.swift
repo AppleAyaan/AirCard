@@ -491,6 +491,9 @@ class AppViewModel: ObservableObject {
     @Published var progress: Double = 0.0
     @Published var statusText: String = "Ready"
     @Published var logs: [String] = []
+    @Published var isRestoring = false
+    @Published var showRestoreSuccessAlert = false
+    @Published var restoreError: String?
     @Published var showSuccessAlert = false
     @Published var errorMessage: String?
     
@@ -963,7 +966,71 @@ class AppViewModel: ObservableObject {
     
     // MARK: - Skin Application
     
+    func restoreCard(id: String) {
+        guard !isFlashing else { return }
+        guard let device = device, device.connected, let udid = device.udid else {
+            restoreError = "Connect and trust your iPhone before restoring this card."
+            return
+        }
+        if isScanningCards { stopCardScanning() }
+        isFlashing = true
+        showLogs = true
+        progress = 0
+        restoreError = nil
+        isRestoring = true
+        statusText = "Restoring original card artwork..."
+        let scriptDir = self.scriptDir
+        Task.detached {
+            let process = Process()
+            process.executableURL = AppViewModel.pythonExecutableURL
+            process.environment = AppViewModel.processEnvironment
+            process.currentDirectoryURL = URL(fileURLWithPath: scriptDir)
+            process.arguments = ["aircard_backend.py", "--restore", udid, id]
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = pipe
+            var failure: String?
+            var succeeded = false
+            do {
+                try process.run()
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                process.waitUntilExit()
+                let output = String(decoding: data, as: UTF8.self)
+                for line in output.components(separatedBy: .newlines) where !line.isEmpty {
+                    if let json = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+                       let message = json["message"] as? String {
+                        if json["type"] as? String == "error" { failure = message }
+                        if json["type"] as? String == "success" { succeeded = true }
+                        await MainActor.run { self.log(message) }
+                    } else {
+                        await MainActor.run { self.log(line) }
+                    }
+                }
+                succeeded = succeeded && process.terminationStatus == 0 && failure == nil
+            } catch {
+                failure = error.localizedDescription
+            }
+            let didSucceed = succeeded
+            let errorText = failure ?? "Restore failed. Check the log, reconnect your iPhone, and try again."
+            await MainActor.run {
+                self.isFlashing = false
+                self.isRestoring = false
+                if didSucceed {
+                    self.clearCardImage(for: id)
+                    self.progress = 1
+                    self.statusText = "Original card artwork restored."
+                    self.showRestoreSuccessAlert = true
+                } else {
+                    self.progress = 0
+                    self.statusText = "Could not restore the original card artwork."
+                    self.restoreError = errorText
+                }
+            }
+        }
+    }
+
     func applySkin() {
+        guard !isFlashing else { return }
         guard let udid = device?.udid else {
             errorMessage = "No iPhone connected."
             return
@@ -1447,10 +1514,13 @@ struct WalletCardView: View {
     let onPickImage: () -> Void
     let onClearImage: () -> Void
     let onDelete: () -> Void
+    let onRestore: () -> Void
+    let canRestore: Bool
     
     @State private var isHovered = false
     @State private var isTargeted = false
     @State private var copied = false
+    @State private var showRestoreConfirmation = false
     
     var body: some View {
         VStack(spacing: 10) {
@@ -1655,6 +1725,21 @@ struct WalletCardView: View {
                         .help("Skin assigned and ready")
                 }
                 
+                Button(action: { showRestoreConfirmation = true }) {
+                    Image(systemName: "arrow.uturn.backward")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.plain)
+                .disabled(!canRestore)
+                .help("Restore original card artwork in Apple Wallet")
+                .accessibilityLabel("Restore original card artwork")
+                .alert("Restore original card artwork?", isPresented: $showRestoreConfirmation) {
+                    Button("Cancel", role: .cancel) {}
+                    Button("Restore", role: .destructive, action: onRestore)
+                } message: {
+                    Text("Remove all skin changes from Card #\(cardIndex + 1) and restore its saved original artwork in Apple Wallet? Your card will stay in Wallet. An original backup on this Mac is required.")
+                }
+
                 // Delete button
                 Button(action: onDelete) {
                     Image(systemName: "trash")
@@ -1712,6 +1797,7 @@ struct ContentView: View {
                 }
             }
             .frame(height: 48)
+            .disabled(vm.isFlashing)
             .padding(.horizontal, 20)
             .background(Color(NSColor.windowBackgroundColor))
             
@@ -1740,11 +1826,14 @@ struct ContentView: View {
                                     cardIndex: idx,
                                     onPickImage: { openCardImagePicker(for: vm.cards[idx].id) },
                                     onClearImage: { vm.clearCardImage(for: vm.cards[idx].id) },
-                                    onDelete: { vm.deleteCard(id: vm.cards[idx].id) }
+                                    onDelete: { vm.deleteCard(id: vm.cards[idx].id) },
+                                    onRestore: { vm.restoreCard(id: vm.cards[idx].id) },
+                                    canRestore: vm.device?.connected == true && !vm.isFlashing
                                 )
                             }
                         }
                         .padding(20)
+                        .disabled(vm.isFlashing)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1776,6 +1865,19 @@ struct ContentView: View {
             } else {
                 Text("Skins successfully applied to all selected cards!\n\nPlease force-close the Wallet app on your iPhone (or reboot) to see your new designs.")
             }
+        }
+        .alert("Card restored", isPresented: $vm.showRestoreSuccessAlert) {
+            Button("OK") {}
+        } message: {
+            Text("The saved original artwork has been restored. Force-close Wallet on your iPhone (or restart it) to refresh the card.")
+        }
+        .alert("Unable to restore card", isPresented: Binding(
+            get: { vm.restoreError != nil },
+            set: { if !$0 { vm.restoreError = nil } }
+        )) {
+            Button("OK") { vm.restoreError = nil }
+        } message: {
+            Text(vm.restoreError ?? "Restore failed.")
         }
         .sheet(isPresented: $showCredits) {
             creditsSheet
@@ -3205,7 +3307,7 @@ struct ContentView: View {
                                 Image(systemName: "sparkles")
                                     .frame(width: 16, height: 16)
                             }
-                            Text(vm.isFlashing ? "Flashing Cards..." : (readyToFlashCount > 0 ? "Flash Skins (\(readyToFlashCount) Cards)" : "Flash Skins"))
+                            Text(vm.isRestoring ? "Restoring Card..." : vm.isFlashing ? "Flashing Cards..." : (readyToFlashCount > 0 ? "Flash Skins (\(readyToFlashCount) Cards)" : "Flash Skins"))
                                 .fontWeight(.semibold)
                         }
                         .padding(.horizontal, 8)

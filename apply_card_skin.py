@@ -245,14 +245,8 @@ def read_file(udid: str, target: str, leaf: str, retries: int = 1) -> "bytes | N
                     atc_cmd.extend((identifier, destination))
                 atc = run_json(atc_cmd, timeout=120)
                 if not (atc.get("exitCode") == 0 and atc.get("ok")):
-                    try:
-                        native("finish-write", udid, source, link_destination,
-                               recovered, os.fspath(snapshot_root))
-                    except Exception:
-                        pass
-                    if attempt < retries:
-                        time.sleep(0.3 * attempt)
-                        continue
+                    # A failed transfer may still have moved the original.
+                    # Preserve recovery staging instead of deleting or retrying it.
                     return None
 
                 rd = native("afc-read", udid, recovered, os.fspath(local_out))
@@ -263,6 +257,11 @@ def read_file(udid: str, target: str, leaf: str, retries: int = 1) -> "bytes | N
                 data = local_out.read_bytes()
 
                 restored = write_file(udid, target, leaf, data, retries=3)
+
+                if not restored:
+                    # Keep the recovered original on the device for recovery.
+                    # Never clean up the only surviving copy after a failed write.
+                    return None
 
                 finish = native(
                     "finish-write",

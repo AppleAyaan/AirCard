@@ -52,6 +52,21 @@
 5. Click **Flash Skins**.
 6. Force-close the **Wallet** app on your iPhone from the App Switcher (or reboot) to see your new custom card design!
 
+### Restore a card's original artwork
+
+Click the **back arrow beside the trash button** on a card, then confirm **Restore**.
+Keep the same iPhone connected and trusted. After restoring, force-close Wallet
+(or restart the iPhone) to refresh its artwork. The card stays in Wallet and in AirCard.
+The trash button only removes a card from AirCard's list.
+
+The app now saves verified original artwork before flashing, separately for each
+card and device, in `~/Library/Application Support/AirCard/Card Backups`.
+Keep these backups on your Mac. Restore requires a backup; skins applied by older
+versions or the standalone command-line scripts cannot be automatically undone.
+If original artwork cannot be verified against the pass manifest, flashing stops
+instead of saving a custom skin as the original. Cards whose original files cannot
+be read or verified are not supported by this backup workflow.
+
 ### If scanning finds no cards
 
 The scanner uses the iPhone's unified log service, including Info/Debug events.
