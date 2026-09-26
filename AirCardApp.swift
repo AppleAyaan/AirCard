@@ -1749,8 +1749,13 @@ struct ContentView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                passcodeThemeWorkspaceView
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Keep the fixed-size preview and creator controls inside the
+                // workspace so they cannot push the header/footer offscreen.
+                ScrollView(.vertical) {
+                    passcodeThemeWorkspaceView
+                        .frame(maxWidth: .infinity, alignment: .top)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             
             // 5. Collapsible Activity Console (if open or flashing)
