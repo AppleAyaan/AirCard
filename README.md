@@ -23,6 +23,16 @@
 
 ---
 
+## Guides and sample artwork
+
+Step-by-step Wallet card setup, troubleshooting, image cropping notes, and four sample images:
+
+- [简体中文使用指南](docs/guides/README.zh-CN.md)
+- [English getting-started guide](docs/guides/README.en.md)
+- [Card artwork and source notes](assets/skins/README.md)
+
+---
+
 ## Installation
 
 ### macOS (Universal DMG)
