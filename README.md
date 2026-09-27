@@ -25,11 +25,12 @@
 
 ## Guides and sample artwork
 
-Step-by-step Wallet card setup, troubleshooting, image cropping notes, and four sample images:
+Wallet setup, detailed troubleshooting, multi-card workflows, theme creation, compatibility reporting, and local artwork preparation:
 
 - [简体中文使用指南](docs/guides/README.zh-CN.md)
 - [English getting-started guide](docs/guides/README.en.md)
 - [Card artwork and source notes](assets/skins/README.md)
+- [Offline card artwork editor](tools/card-artwork/README.md) — download a single HTML file, frame an image locally, and export a 1536 × 969 PNG
 
 ---
 

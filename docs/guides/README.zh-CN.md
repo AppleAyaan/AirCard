@@ -46,7 +46,7 @@ AirCard 是一款 macOS 工具，通过 USB 连接 iPhone，自定义 Apple Wall
 
 打开[官方下载页](https://github.com/Mak5er/AirCard/releases/latest)，在 **Assets** 中下载 `AirCard.dmg`。打开 DMG，将 `AirCard.app` 拖入 **Applications / 应用程序**，然后启动。
 
-如果首次启动被 macOS 拦截，先确认文件来自上面的原作者仓库，再按[原作者安装说明](../../README.md#installation)处理。
+如果首次启动被 macOS 拦截，先确认文件来自上面的原作者仓库，再按[原作者安装说明](https://github.com/Mak5er/AirCard/blob/main/README.md#installation)处理。
 
 ### 2. 连接 iPhone
 
@@ -70,6 +70,16 @@ AirCard 是一款 macOS 工具，通过 USB 连接 iPhone，自定义 Apple Wall
 
 点击 **Flash Skins**，等待完成。然后在 iPhone 的多任务界面彻底关闭 **钱包 / Wallet**，再重新打开；如果没有更新，可尝试重启 iPhone。
 
+## 深入使用
+
+| 你想做什么 | 对应指南 |
+| --- | --- |
+| 解决连接、扫描、刷入或刷新失败 | [分阶段排障手册](TROUBLESHOOTING.zh-CN.md) |
+| 管理多张卡片、换设备、处理批量中断 | [多卡操作与失败处理](MULTI-CARD.zh-CN.md) |
+| 从整图或单键图片制作锁屏主题 | [Theme Creator 完整教程](THEME-CREATOR.zh-CN.md) |
+| 查看已验证范围或提交设备测试结果 | [兼容性记录](COMPATIBILITY.zh-CN.md) · [反馈模板](compatibility-report-template.md) |
+| 调整图片构图并导出标准尺寸卡面 | [离线卡面制作工具](../../tools/card-artwork/README.md) |
+
 ## 常见问题
 
 ### 扫描不到卡片？
@@ -92,13 +102,13 @@ AirCard 是一款 macOS 工具，通过 USB 连接 iPhone，自定义 Apple Wall
 
 ### 锁屏密码键盘主题怎么用？
 
-切换到 **Passcode (.passthm)**，导入 `.passthm` 文件，预览后点击 **Flash Passcode Theme**，完成后重启 iPhone。这里提供的 PNG 素材是卡面图片，并不是 `.passthm` 主题包。主题制作与源码构建请参阅[上游原始 README](../../README.md)。
+切换到 **Passcode (.passthm)**，导入 `.passthm` 文件，预览后点击 **Flash Passcode Theme**，完成后重启 iPhone。这里提供的 PNG 素材是卡面图片，并不是 `.passthm` 主题包。主题制作与源码构建请参阅[上游原始 README](https://github.com/Mak5er/AirCard/blob/main/README.md)。
 
 ## 反馈、更新与致谢
 
 - **下载和版本更新：**[Mak5er/AirCard Releases](https://github.com/Mak5er/AirCard/releases)。安装包由原项目发布。
 - **程序问题：** 查看[上游 Issues](https://github.com/Mak5er/AirCard/issues)。反馈时提供机型、iOS、macOS 和 AirCard 版本，以及简短错误信息；不要公开完整设备日志或卡片标识。
 - **指南和素材说明：** 由 [BryceYuuu](https://github.com/BryceYuuu) 整理，独立教程仓库为 [AirCard-Guide](https://github.com/BryceYuuu/AirCard-Guide)。
-- **原作者及贡献者：**[Mak5er](https://github.com/Mak5er)、[Lumid-Off](https://github.com/Lumid-Off)，以及提供底层 [AirLift](https://github.com/0xjohnnydev/airlift) 的 [0xjohnny](https://github.com/0xjohnnydev)。喜欢这个项目，可以给[原项目](https://github.com/Mak5er/AirCard)点个 Star，或通过[原作者支持入口](../../README.md#support)支持开发。
+- **原作者及贡献者：**[Mak5er](https://github.com/Mak5er)、[Lumid-Off](https://github.com/Lumid-Off)，以及提供底层 [AirLift](https://github.com/0xjohnnydev/airlift) 的 [0xjohnny](https://github.com/0xjohnnydev)。喜欢这个项目，可以给[原项目](https://github.com/Mak5er/AirCard)点个 Star，或通过[原作者支持入口](https://github.com/Mak5er/AirCard/blob/main/README.md#support)支持开发。
 
 上游代码遵循 [MIT License](../../LICENSE)，原有版权声明保持不变。新增素材由 [BryceYuuu](https://github.com/BryceYuuu) 提供，不自动适用代码的 MIT 授权，详见[素材说明](../../assets/skins/README.md)。本指南及示例卡面不代表 Apple 或任何银行的官方产品。
