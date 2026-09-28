@@ -4,7 +4,16 @@ import UniformTypeIdentifiers
 
 // MARK: - Models
 
-struct DeviceInfo: Codable {
+struct DeviceResponse: Codable {
+    var connected: Bool
+    var error: String?
+    var devices: [DeviceInfo]?
+    var selected_udid: String?
+    var device: DeviceInfo?
+}
+
+struct DeviceInfo: Codable, Identifiable, Hashable {
+    var id: String { udid ?? UUID().uuidString }
     var udid: String?
     var name: String?
     var version: String?
@@ -15,6 +24,36 @@ struct DeviceInfo: Codable {
     var airlift_compatible: Bool?
     var connected: Bool
     var error: String?
+
+    var displayName: String {
+        if let n = name, !n.isEmpty { return n }
+        if let p = product, p.hasPrefix("iPhone") { return "iPhone" }
+        return "Apple Device"
+    }
+
+    var subtitle: String {
+        var parts: [String] = []
+        if let p = product, !p.isEmpty { parts.append(p) }
+        if let v = version, !v.isEmpty { parts.append("iOS \(v)") }
+        return parts.joined(separator: " · ")
+    }
+
+    var isPaired: Bool {
+        product != nil && !(product?.isEmpty ?? true) && product != "Unknown"
+    }
+
+    var menuLabel: String {
+        let title = displayName
+        let sub = subtitle
+        let shortUDID = udid.map { $0.count > 6 ? String($0.suffix(6)) : $0 } ?? ""
+        if !isPaired {
+            return shortUDID.isEmpty ? "\(title) (Locked/Unpaired)" : "Device [...\(shortUDID)] (Locked/Unpaired)"
+        }
+        if sub.isEmpty {
+            return shortUDID.isEmpty ? title : "\(title) [...\(shortUDID)]"
+        }
+        return shortUDID.isEmpty ? "\(title) (\(sub))" : "\(title) (\(sub)) [...\(shortUDID)]"
+    }
 }
 
 struct CardItem: Identifiable, Hashable {
@@ -482,6 +521,8 @@ class AppViewModel: ObservableObject {
     @Published var creatorIndividualZooms: [String: Double] = [:]
     @Published var selectedKeyDigit: String? = nil
     
+    @Published var devices: [DeviceInfo] = []
+    @Published var selectedDeviceUDID: String? = nil
     @Published var device: DeviceInfo?
     @Published var isCheckingDevice = false
     @Published var isScanningCards = false
@@ -717,51 +758,124 @@ class AppViewModel: ObservableObject {
     }
     
     // MARK: - Device Connection
-    
-    func checkDevice() {
+
+    func selectDevice(_ dev: DeviceInfo) {
+        guard dev.udid != self.device?.udid else { return }
+
+        if isScanningCards {
+            scanProcess?.terminate()
+            scanProcess = nil
+            isScanningCards = false
+        }
+
+        self.device = dev
+        self.selectedDeviceUDID = dev.udid
+        if let u = dev.udid {
+            UserDefaults.standard.set(u, forKey: "mak5er.aircard.selectedUDID")
+        }
+
+        self.statusText = "Selected \(dev.displayName)"
+        self.log("Switched active device to: \(dev.displayName) (\(dev.product ?? ""), iOS \(dev.version ?? ""))")
+        self.applyDevicePreferences(from: dev)
+
+        if let udid = dev.udid {
+            checkDevice(preferredUDID: udid)
+        }
+    }
+
+    func checkDevice(preferredUDID: String? = nil) {
         isCheckingDevice = true
         statusText = "Checking connected devices..."
         let scriptDir = self.scriptDir
-        
+        let targetUDID = preferredUDID ?? selectedDeviceUDID ?? UserDefaults.standard.string(forKey: "mak5er.aircard.selectedUDID")
+
         Task.detached {
             let process = Process()
             process.executableURL = AppViewModel.pythonExecutableURL
             process.environment = AppViewModel.processEnvironment
             process.currentDirectoryURL = URL(fileURLWithPath: scriptDir)
-            process.arguments = ["aircard_backend.py", "--device"]
-            
+            if let targetUDID = targetUDID, !targetUDID.isEmpty {
+                process.arguments = ["aircard_backend.py", "--devices", targetUDID]
+            } else {
+                process.arguments = ["aircard_backend.py", "--devices"]
+            }
+
             let pipe = Pipe()
             process.standardOutput = pipe
             process.standardError = FileHandle.nullDevice
-            
+
             do {
                 try process.run()
                 let data = pipe.fileHandleForReading.readDataToEndOfFile()
                 process.waitUntilExit()
-                
-                if let dev = try? JSONDecoder().decode(DeviceInfo.self, from: data) {
+
+                if let resp = try? JSONDecoder().decode(DeviceResponse.self, from: data) {
                     await MainActor.run {
-                        self.device = dev
+                        self.isCheckingDevice = false
+                        let allDevs = resp.devices ?? []
+                        self.devices = allDevs
+
+                        if let activeDev = resp.device, activeDev.connected {
+                            self.device = activeDev
+                            self.selectedDeviceUDID = activeDev.udid
+                            if let u = activeDev.udid {
+                                UserDefaults.standard.set(u, forKey: "mak5er.aircard.selectedUDID")
+                            }
+                            self.statusText = "Connected to \(activeDev.name ?? "iPhone")"
+                            self.log("Device connected: \(activeDev.name ?? "iPhone") (\(activeDev.product ?? ""), iOS \(activeDev.version ?? "")) [Total: \(allDevs.count)]")
+                            self.applyDevicePreferences(from: activeDev)
+                        } else if let first = allDevs.first(where: { $0.isPaired }) ?? allDevs.first {
+                            self.device = first
+                            self.selectedDeviceUDID = first.udid
+                            if let u = first.udid {
+                                UserDefaults.standard.set(u, forKey: "mak5er.aircard.selectedUDID")
+                            }
+                            self.statusText = "Connected to \(first.displayName)"
+                            self.log("Device selected: \(first.displayName) [Total: \(allDevs.count)]")
+                            self.applyDevicePreferences(from: first)
+                        } else {
+                            self.device = nil
+                            if resp.error == "device_helper_missing" {
+                                self.statusText = "Device tools are missing from this build."
+                                self.log("Bundled device_helper not found — detection cannot run.")
+                            } else {
+                                self.statusText = "No iPhone found. Please connect via USB."
+                            }
+                        }
+                    }
+                } else if let dev = try? JSONDecoder().decode(DeviceInfo.self, from: data) {
+                    await MainActor.run {
                         self.isCheckingDevice = false
                         if dev.connected {
+                            self.devices = [dev]
+                            self.device = dev
+                            self.selectedDeviceUDID = dev.udid
                             self.statusText = "Connected to \(dev.name ?? "iPhone")"
                             self.log("Device connected: \(dev.name ?? "iPhone") (\(dev.product ?? ""), iOS \(dev.version ?? ""))")
                             self.applyDevicePreferences(from: dev)
-                        } else if dev.error == "device_helper_missing" {
-                            self.statusText = "Device tools are missing from this build."
-                            self.log("Bundled device_helper not found — detection cannot run.")
                         } else {
-                            self.statusText = "No iPhone found. Please connect via USB."
+                            self.devices = []
+                            self.device = nil
+                            if dev.error == "device_helper_missing" {
+                                self.statusText = "Device tools are missing from this build."
+                                self.log("Bundled device_helper not found — detection cannot run.")
+                            } else {
+                                self.statusText = "No iPhone found. Please connect via USB."
+                            }
                         }
                     }
                 } else {
                     await MainActor.run {
+                        self.devices = []
+                        self.device = nil
                         self.isCheckingDevice = false
                         self.statusText = "No iPhone found. Please connect via USB."
                     }
                 }
             } catch {
                 await MainActor.run {
+                    self.devices = []
+                    self.device = nil
                     self.isCheckingDevice = false
                     self.statusText = "Device detection failed: \(error.localizedDescription)"
                 }
@@ -1833,32 +1947,87 @@ struct ContentView: View {
             
             Spacer()
             
-            // Device Status Capsule
+            // Device Status Capsule & Dropdown Selector Menu
             HStack(spacing: 8) {
                 Circle()
                     .fill(vm.device?.connected == true ? Color.green : Color.red)
                     .frame(width: 8, height: 8)
-                
-                if let dev = vm.device, dev.connected {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(dev.name ?? "iPhone")
-                            .font(.system(size: 11, weight: .semibold))
-                            .lineLimit(1)
-                        Text("\(dev.product ?? "") · iOS \(dev.version ?? "")")
-                            .font(.system(size: 9))
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                    }
-                } else {
+
+                if vm.devices.isEmpty && vm.device?.connected != true {
                     Text("No iPhone (USB)")
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .lineLimit(1)
+                } else {
+                    Menu {
+                        Section("Connected Devices (\(max(vm.devices.count, 1)))") {
+                            ForEach(vm.devices.isEmpty ? (vm.device.map { [$0] } ?? []) : vm.devices) { dev in
+                                Button(action: {
+                                    vm.selectDevice(dev)
+                                }) {
+                                    HStack {
+                                        if dev.udid == vm.device?.udid {
+                                            Image(systemName: "checkmark")
+                                        }
+                                        Text(dev.menuLabel)
+                                    }
+                                }
+                            }
+                        }
+
+                        Divider()
+
+                        Button(action: { vm.checkDevice() }) {
+                            Label("Refresh Device List", systemImage: "arrow.clockwise")
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            if let dev = vm.device, dev.connected {
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(dev.displayName)
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .lineLimit(1)
+                                    Text(dev.subtitle.isEmpty ? (dev.udid.map { "...\($0.suffix(6))" } ?? "") : dev.subtitle)
+                                        .font(.system(size: 9))
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                }
+                            } else {
+                                Text("Select Device")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                            }
+
+                            if vm.devices.count > 1 {
+                                Text("\(vm.devices.count)")
+                                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 1)
+                                    .background(Color.accentColor.opacity(0.18))
+                                    .foregroundColor(.accentColor)
+                                    .clipShape(Capsule())
+                            }
+
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 8, weight: .medium))
+                                .foregroundColor(.secondary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .menuStyle(.borderlessButton)
+                    .help("Click to select an active device")
                 }
-                
+
                 Button(action: { vm.checkDevice() }) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 11))
+                    if vm.isCheckingDevice {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .frame(width: 11, height: 11)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 11))
+                    }
                 }
                 .buttonStyle(.plain)
                 .disabled(vm.isCheckingDevice)
