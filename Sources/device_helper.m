@@ -5,6 +5,7 @@
 #include <unistd.h>
 
 #import "airlift_target.h"
+#import "device_discovery.h"
 #import "os_trace.h"
 
 typedef const void *AMDeviceRef;
@@ -143,17 +144,6 @@ static void DeviceCallback(AMDeviceNotificationCallbackInfo *info,
     CFRunLoopStop(CFRunLoopGetMain());
 }
 
-static NSDictionary *SubscriptionOptions(BOOL directConnectionsOnly) {
-    return @{
-        @"NotificationOptionSearchForPairedDevices": @YES,
-        @"NotificationOptionSearchForPairedDevicesViaDirectConnectionsOnly":
-            @(directConnectionsOnly),
-        @"NotificationOptionSearchForWiFiPairableDevices": @NO,
-        @"NotificationOptionEnableRemoteXPC": @YES,
-        @"NotificationOptionEnableUSBMux": @YES,
-    };
-}
-
 static int FindTarget(void) {
     AMDeviceNotificationRef subscription = NULL;
     int status = AMDeviceNotificationSubscribeWithOptions(
@@ -162,7 +152,7 @@ static int FindTarget(void) {
         0,
         NULL,
         &subscription,
-        (__bridge CFDictionaryRef)SubscriptionOptions(NO));
+        (__bridge CFDictionaryRef)AirCardDeviceNotificationOptions(NO));
     if (status == 0)
         CFRunLoopRunInMode(kCFRunLoopDefaultMode, 30.0, false);
     if (subscription) AMDeviceNotificationUnsubscribe(subscription);
@@ -235,7 +225,7 @@ static int ListDevices(void) {
         0,
         NULL,
         &subscription,
-        (__bridge CFDictionaryRef)SubscriptionOptions(YES));
+        (__bridge CFDictionaryRef)AirCardDeviceNotificationOptions(YES));
     if (status == 0)
         CFRunLoopRunInMode(kCFRunLoopDefaultMode, 2.0, false);
     if (subscription) AMDeviceNotificationUnsubscribe(subscription);
