@@ -143,29 +143,56 @@ def cmd_flash(udid: str, card_hash: str, image_path: str) -> bool:
         return False
 
     pkpass_dir = f"/var/mobile/Library/Passes/Cards/{card_hash}.pkpass"
-    
-    total_steps = 4
-    step = 0
+
+    # One step per artwork file, then one step for each rendered-cache directory.
+    num_assets = len(asset_payloads)
+    total_steps = num_assets + 2
     all_ok = True
 
-    step += 1
+    def on_asset_progress(event: dict) -> None:
+        index = event.get("index", 0)
+        leaf = event.get("leaf", "")
+        current = min(max(int(index), 0), num_assets)
+        print(json.dumps({
+            "type": "progress",
+            "card": card_hash,
+            "step": current,
+            "total": total_steps,
+            "leaf": leaf,
+            "message": f"Writing {leaf} ({current}/{total_steps})...",
+        }))
+        sys.stdout.flush()
+
     print(json.dumps({
         "type": "progress",
         "card": card_hash,
-        "step": step,
+        "step": 0,
         "total": total_steps,
-        "message": f"Writing {len(asset_payloads)} artwork files (fast batch)..."
+        "message": f"Writing {num_assets} artwork files (fast batch)..."
     }))
     sys.stdout.flush()
 
     try:
-        ok = write_files_batch(udid, pkpass_dir, asset_payloads)
+        ok = write_files_batch(
+            udid,
+            pkpass_dir,
+            asset_payloads,
+            progress_callback=on_asset_progress,
+        )
     except (OSError, RuntimeError, subprocess.SubprocessError):
         ok = False
 
     if not ok:
-        # Fallback to individual writes if batch fails
-        for asset, payload in asset_payloads:
+        for file_index, (asset, payload) in enumerate(asset_payloads, 1):
+            print(json.dumps({
+                "type": "progress",
+                "card": card_hash,
+                "step": file_index,
+                "total": total_steps,
+                "leaf": asset,
+                "message": f"[Fallback] Writing {asset} ({file_index}/{total_steps})...",
+            }))
+            sys.stdout.flush()
             try:
                 ok_single = write_file(udid, pkpass_dir, asset, payload)
             except Exception:
@@ -173,11 +200,10 @@ def cmd_flash(udid: str, card_hash: str, image_path: str) -> bool:
             if not ok_single:
                 all_ok = False
 
-    # Wallet v2: genuinely unlink rendered faces. Writing corrupt bytes here can
-    # leave the previous artwork resident indefinitely on iOS 27.
-    for ext in [".cache", ".pkcache"]:
+    # Wallet only rebuilds a face after the old cache entry is gone.
+    for cache_offset, ext in enumerate((".cache", ".pkcache"), start=1):
         cache_dir = f"/var/mobile/Library/Passes/Cards/{card_hash}{ext}"
-        step += 1
+        step = num_assets + cache_offset
         print(json.dumps({
             "type": "progress",
             "card": card_hash,
@@ -201,12 +227,11 @@ def cmd_flash(udid: str, card_hash: str, image_path: str) -> bool:
             }))
             sys.stdout.flush()
 
-    step += 1
     if not all_ok:
         print(json.dumps({
             "type": "error",
             "card": card_hash,
-            "step": step,
+            "step": total_steps,
             "total": total_steps,
             "message": f"Failed to update {card_hash[:12]}..."
         }))
@@ -216,7 +241,7 @@ def cmd_flash(udid: str, card_hash: str, image_path: str) -> bool:
     print(json.dumps({
         "type": "success",
         "card": card_hash,
-        "step": step,
+        "step": total_steps,
         "total": total_steps,
         "message": f"Successfully updated {card_hash[:12]}..."
     }))

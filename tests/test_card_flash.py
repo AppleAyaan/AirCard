@@ -112,6 +112,67 @@ class CardFlashTests(unittest.TestCase):
         self.assertEqual(messages[-1]["type"], "error")
         self.assertFalse(any(message["type"] == "success" for message in messages))
 
+    def test_flash_streams_per_file_progress_and_finishes_at_total(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            image_path = Path(temporary) / "card.png"
+            image_path.write_bytes(PNG_1X1)
+            output = io.StringIO()
+
+            def batch(_udid, _target, files, retries=3, progress_callback=None):
+                self.assertEqual(retries, 3)
+                self.assertIsNotNone(progress_callback)
+                for index, (leaf, _payload) in enumerate(files, 1):
+                    progress_callback({
+                        "type": "atc_progress",
+                        "index": index,
+                        "total": len(files),
+                        "leaf": leaf,
+                    })
+                return True
+
+            with (
+                patch.object(aircard_backend, "write_files_batch", side_effect=batch),
+                patch.object(aircard_backend, "remove_files", return_value=True),
+                redirect_stdout(output),
+            ):
+                result = aircard_backend.cmd_flash("device", "card", str(image_path))
+
+        messages = [json.loads(line) for line in output.getvalue().splitlines()]
+        written = [
+            message for message in messages
+            if message.get("message", "").startswith("Writing cardBackground")
+        ]
+        self.assertTrue(result)
+        self.assertEqual([message["step"] for message in written], [1, 2, 3])
+        self.assertTrue(all(message["total"] == 5 for message in written))
+        self.assertEqual(messages[-1]["type"], "success")
+        self.assertEqual(messages[-1]["step"], messages[-1]["total"])
+
+    def test_flash_fallback_emits_per_file_progress(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            image_path = Path(temporary) / "card.png"
+            image_path.write_bytes(PNG_1X1)
+            output = io.StringIO()
+            with (
+                patch.object(aircard_backend, "write_files_batch", return_value=False),
+                patch.object(aircard_backend, "write_file", return_value=True),
+                patch.object(aircard_backend, "remove_files", return_value=True),
+                redirect_stdout(output),
+            ):
+                result = aircard_backend.cmd_flash("device", "card", str(image_path))
+
+        messages = [json.loads(line) for line in output.getvalue().splitlines()]
+        fallback = [
+            message for message in messages
+            if message.get("message", "").startswith("[Fallback] Writing")
+        ]
+        self.assertTrue(result)
+        self.assertEqual(len(fallback), 3)
+        self.assertEqual([message["step"] for message in fallback], [1, 2, 3])
+        self.assertTrue(all(message["total"] == 5 for message in fallback))
+        self.assertEqual(messages[-1]["step"], 5)
+        self.assertEqual(messages[-1]["total"], 5)
+
     def test_flash_reports_failure_when_pdf_conversion_fails(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             image_path = Path(temporary) / "card.png"
