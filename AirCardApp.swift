@@ -32,6 +32,18 @@ struct CardItem: Identifiable, Hashable {
     }
 }
 
+// A lazy row can outlive its entry in the array. Resolve each access by ID;
+// retain the row snapshot for teardown reads and ignore writes after deletion.
+func walletCardBinding(in cards: Binding<[CardItem]>, snapshot: CardItem) -> Binding<CardItem> {
+    Binding(
+        get: { cards.wrappedValue.first(where: { $0.id == snapshot.id }) ?? snapshot },
+        set: { updated in
+            guard let index = cards.wrappedValue.firstIndex(where: { $0.id == snapshot.id }) else { return }
+            cards.wrappedValue[index] = updated
+        }
+    )
+}
+
 enum AppTab: String, CaseIterable, Identifiable {
     case walletCards = "Apple Wallet"
     case passcodeThemes = "Passcode (.passthm)"
@@ -1766,13 +1778,13 @@ struct ContentView: View {
                             columns: [GridItem(.adaptive(minimum: 310, maximum: 360), spacing: 20)],
                             spacing: 20
                         ) {
-                            ForEach(Array(vm.cards.indices), id: \.self) { idx in
+                            ForEach(Array(vm.cards.enumerated()), id: \.element.id) { idx, card in
                                 WalletCardView(
-                                    card: $vm.cards[idx],
+                                    card: walletCardBinding(in: $vm.cards, snapshot: card),
                                     cardIndex: idx,
-                                    onPickImage: { openCardImagePicker(for: vm.cards[idx].id) },
-                                    onClearImage: { vm.clearCardImage(for: vm.cards[idx].id) },
-                                    onDelete: { vm.deleteCard(id: vm.cards[idx].id) }
+                                    onPickImage: { openCardImagePicker(for: card.id) },
+                                    onClearImage: { vm.clearCardImage(for: card.id) },
+                                    onDelete: { vm.deleteCard(id: card.id) }
                                 )
                             }
                         }
