@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import base64
 import io
+import hashlib
 import json
 import os
 import re
@@ -42,6 +43,7 @@ for lp in lib_paths:
 
 from apply_card_skin import (
     native,
+    read_file,
     operation_ok,
     write_file,
     write_files_batch,
@@ -50,7 +52,7 @@ from apply_card_skin import (
     ROOT,
     DEVICE_HELPER,
 )
-from card_assets import CACHE_FILES, build_card_assets
+from card_assets import CACHE_FILES, PNG_ASSET_NAMES, PDF_ASSET_NAME, build_card_assets
 from aircard import (
     find_device_helper,
     get_connected_device,
@@ -173,6 +175,88 @@ def cmd_prepare_image(src: str, dst: str):
         print(json.dumps({"ok": False, "error": str(e)}))
 
 
+BACKUP_ROOT = Path.home() / "Library/Application Support/AirCard/Card Backups"
+ARTWORK_NAMES = (*PNG_ASSET_NAMES, PDF_ASSET_NAME)
+
+
+def backup_path(udid: str, card_hash: str) -> Path:
+    # Hash identifiers so neither device IDs nor pass hashes can escape the directory.
+    key = hashlib.sha256(f"{udid}\0{card_hash}".encode()).hexdigest()
+    return BACKUP_ROOT / key / "original.json"
+
+
+def load_original(udid: str, card_hash: str) -> dict:
+    path = backup_path(udid, card_hash)
+    if not path.exists():
+        raise ValueError("No original artwork backup exists for this card on this Mac. "
+                         "Skins applied by older versions cannot be restored automatically.")
+    record = json.loads(path.read_text())
+    if (record.get("version") != 1 or record.get("udid") != udid
+            or record.get("card") != card_hash
+            or set(record.get("assets", {})) != set(ARTWORK_NAMES)):
+        raise ValueError("The original artwork backup is invalid. Restore was stopped.")
+    for name, asset in record["assets"].items():
+        if asset is not None:
+            data = base64.b64decode(asset["data"], validate=True)
+            if not data or hashlib.sha256(data).hexdigest() != asset["sha256"]:
+                raise ValueError(f"The backup for {name} is damaged. Restore was stopped.")
+    return record
+
+
+def ensure_original_backup(udid: str, card_hash: str) -> None:
+    path = backup_path(udid, card_hash)
+    if path.exists():
+        load_original(udid, card_hash)
+        return
+    target = f"/var/mobile/Library/Passes/Cards/{card_hash}.pkpass"
+    print(json.dumps({"type": "progress", "message": "Saving original card artwork..."}), flush=True)
+    manifest_bytes = read_file(udid, target, "manifest.json")
+    if not manifest_bytes:
+        raise ValueError("Could not read the original pass manifest. No skin was applied.")
+    manifest = json.loads(manifest_bytes)
+    if not isinstance(manifest, dict) or not any(name in manifest for name in ARTWORK_NAMES):
+        raise ValueError("This card's original artwork cannot be backed up safely. No skin was applied.")
+    assets = {}
+    for name in ARTWORK_NAMES:
+        if name not in manifest:
+            assets[name] = None
+            continue
+        data = read_file(udid, target, name)
+        if not data or hashlib.sha1(data).hexdigest() != manifest[name]:
+            raise ValueError("Original artwork could not be verified. This card may already have "
+                             "a skin from an older version without a backup. No new skin was applied.")
+        assets[name] = {"data": base64.b64encode(data).decode(),
+                        "sha256": hashlib.sha256(data).hexdigest()}
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    record = {"version": 1, "udid": udid, "card": card_hash, "assets": assets}
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(record))
+    temporary.chmod(0o600)
+    temporary.replace(path)
+
+
+def cmd_restore(udid: str, card_hash: str) -> bool:
+    try:
+        record = load_original(udid, card_hash)
+        target = f"/var/mobile/Library/Passes/Cards/{card_hash}.pkpass"
+        print(json.dumps({"type": "progress", "message": "Restoring original card artwork..."}), flush=True)
+        for name, asset in record["assets"].items():
+            if asset is None:
+                ok = remove_files(udid, target, [name])
+            else:
+                ok = write_file(udid, target, name, base64.b64decode(asset["data"], validate=True))
+            if not ok:
+                raise RuntimeError("Could not restore all artwork. The backup was kept; reconnect and try again.")
+        for ext in (".cache", ".pkcache"):
+            if not remove_files(udid, f"/var/mobile/Library/Passes/Cards/{card_hash}{ext}", list(CACHE_FILES)):
+                raise RuntimeError("Artwork restored, but Wallet's cache could not be cleared. Please try Restore again.")
+        print(json.dumps({"type": "success", "message": "Original card artwork restored."}), flush=True)
+        return True
+    except Exception as error:
+        print(json.dumps({"type": "error", "message": str(error)}), flush=True)
+        return False
+
+
 def cmd_flash(udid: str, card_hash: str, image_path: str) -> bool:
     img_path = Path(image_path)
     if not img_path.is_file():
@@ -188,6 +272,12 @@ def cmd_flash(udid: str, card_hash: str, image_path: str) -> bool:
             "message": "Failed to prepare card artwork"
         }))
         sys.stdout.flush()
+        return False
+
+    try:
+        ensure_original_backup(udid, card_hash)
+    except Exception as error:
+        print(json.dumps({"type": "error", "message": str(error)}), flush=True)
         return False
 
     pkpass_dir = f"/var/mobile/Library/Passes/Cards/{card_hash}.pkpass"
@@ -654,6 +744,9 @@ def main():
         cmd_prepare_image(sys.argv[2], sys.argv[3])
     elif norm_cmd == "flash" and len(sys.argv) > 4:
         if not cmd_flash(sys.argv[2], sys.argv[3], sys.argv[4]):
+            sys.exit(1)
+    elif norm_cmd == "restore" and len(sys.argv) == 4:
+        if not cmd_restore(sys.argv[2], sys.argv[3]):
             sys.exit(1)
     elif norm_cmd == "inspect-passthm" and len(sys.argv) > 2:
         cmd_inspect_passthm(sys.argv[2])
