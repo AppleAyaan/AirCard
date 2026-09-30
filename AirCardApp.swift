@@ -1321,7 +1321,13 @@ class AppViewModel: ObservableObject {
         catalogRefreshTask?.cancel()
         pendingActivationIDs = []
         if isScanningCards {
-            scannerMessage = currentScanIDs.isEmpty ? "No cards detected in this scan. Open Wallet and tap the missing card, then retry. Some iOS logs hide identifiers." : "Scan stopped. \(currentScanIDs.count) distinct card(s) seen; missing cards remain unconfirmed."
+            if !currentVerifiedCardIDs.isEmpty {
+                scannerMessage = "\(currentVerifiedCardIDs.count) card(s) verified."
+            } else if !currentScanIDs.isEmpty {
+                scannerMessage = "Scan stopped. \(currentScanIDs.count) card(s) detected."
+            } else {
+                scannerMessage = "No cards detected. Open Wallet and tap a card."
+            }
         }
         let process = scanProcess
         scanProcess = nil
@@ -2349,7 +2355,7 @@ struct ContentView: View {
                     Text("AirCard")
                         .font(.title2)
                         .fontWeight(.bold)
-                    Text("v1.2.4-kyler.2")
+                    Text("v1.2.5")
                         .font(.system(size: 10, weight: .bold, design: .rounded))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)

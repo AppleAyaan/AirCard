@@ -38,7 +38,7 @@ AirCard 是一款 macOS 工具，通过 USB 连接 iPhone，自定义 Apple Wall
 | 卡片 | 已经添加到 Apple Wallet 的卡片 |
 | 软件 | 从[原作者 Releases](https://github.com/Mak5er/AirCard/releases/latest)下载 `AirCard.dmg`；使用 DMG 无需另装 Homebrew 或 Python |
 
-本指南依据 **AirCard v1.2.4** 与上游提交 [`c91d8f9`](https://github.com/Mak5er/AirCard/commit/c91d8f9d26e7dc6124c29a9f0d1fc820e55e0d23) 整理（2026-09-27）。上游 README 标注曾在 iOS 27 测试；这不代表所有设备都已验证。本指南没有新增实机兼容性测试。
+本指南依据 **AirCard v1.2.5** 整理（2026-09-30）。上游 README 标注曾在 iOS 27 测试；这不代表所有设备都已验证。本指南没有新增实机兼容性测试。
 
 ## 五步换卡面
 
