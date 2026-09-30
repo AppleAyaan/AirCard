@@ -114,24 +114,51 @@ def list_devices() -> list[dict]:
     return []
 
 
-def get_connected_device() -> dict | None:
-    """Picks the connected iPhone out of the enumerated devices."""
-    usable = [d for d in list_devices() if d.get("udid") and d.get("product")]
-    if not usable:
-        return None
-    # Enumeration order is not stable, and iPads can appear alongside the iPhone.
-    iphones = [d for d in usable if str(d["product"]).startswith("iPhone")]
-    device = (iphones or usable)[0]
-
+def format_device(device: dict) -> dict:
+    product = device.get("product")
+    has_product = bool(product and product != "Unknown")
+    default_name = (
+        "iPhone"
+        if (product and str(product).startswith("iPhone"))
+        else ("Apple Device" if has_product else "Locked / Unpaired Device")
+    )
     return {
         "udid": device["udid"],
-        "name": device.get("name") or "iPhone",
-        "version": device.get("version") or "Unknown",
-        "product": device["product"],
+        "name": device.get("name") or default_name,
+        "version": device.get("version") or ("Unknown" if has_product else ""),
+        "product": product or "",
         "language": device.get("language") or "en",
         "locale": device.get("locale") or "",
         "bold_text": device.get("bold_text"),
+        "connected": True,
     }
+
+
+def get_all_connected_devices() -> list[dict]:
+    """Returns all enumerated devices formatted for UI/CLI consumption."""
+    raw = [d for d in list_devices() if d.get("udid")]
+    if not raw:
+        return []
+    # Separate into fully paired iPhones, other paired devices, and unpaired devices
+    iphones = [d for d in raw if d.get("product") and str(d["product"]).startswith("iPhone")]
+    other_paired = [d for d in raw if d.get("product") and not str(d["product"]).startswith("iPhone")]
+    unpaired = [d for d in raw if not d.get("product")]
+
+    sorted_raw = iphones + other_paired + unpaired
+    return [format_device(d) for d in sorted_raw]
+
+
+def get_connected_device(target_udid: str | None = None) -> dict | None:
+    """Picks the connected device (by UDID if given, or the best available device)."""
+    devices = get_all_connected_devices()
+    if not devices:
+        return None
+    if target_udid:
+        for d in devices:
+            if d["udid"] == target_udid:
+                return d
+    paired = [d for d in devices if d.get("product")]
+    return paired[0] if paired else devices[0]
 
 
 def syslog_command(udid: str) -> list[str] | None:
@@ -288,12 +315,42 @@ def main():
 
     # 1. Device discovery
     print("\n[1/5] Searching for connected device...")
-    device = get_connected_device()
-    if not device:
+    devices = get_all_connected_devices()
+    if not devices:
         print("❌ iPhone not found! Connect your iPhone via USB and unlock the screen.")
         sys.exit(1)
 
-    print(f"✅ Found: {device['name']} ({device['product']}, iOS {device['version']})")
+    target_udid = None
+    for i, arg in enumerate(sys.argv[1:]):
+        if arg == "--udid" and i + 2 < len(sys.argv):
+            target_udid = sys.argv[i + 2]
+            break
+
+    device = None
+    if target_udid:
+        device = get_connected_device(target_udid)
+        if not device:
+            print(f"❌ Specified device UDID {target_udid} not found among connected devices.")
+            sys.exit(1)
+    elif len(devices) == 1:
+        device = devices[0]
+    else:
+        print(f"\n📱 Found {len(devices)} connected device(s):")
+        for idx, d in enumerate(devices, 1):
+            prod_str = f" ({d['product']}, iOS {d['version']})" if d.get("product") else " (Locked/Unpaired)"
+            print(f"  [{idx}] {d['name']}{prod_str} — UDID: {d['udid']}")
+
+        while not device:
+            choice = input(f"\nSelect device [1-{len(devices)}, default 1]: ").strip()
+            if not choice:
+                device = devices[0]
+                break
+            if choice.isdigit() and 1 <= int(choice) <= len(devices):
+                device = devices[int(choice) - 1]
+                break
+            print("Invalid choice, please try again.")
+
+    print(f"\n✅ Selected: {device['name']} ({device.get('product') or 'Device'}, iOS {device.get('version') or '?'})")
     print(f"   UDID: {device['udid']}")
 
     # 2. Check airlift compatibility

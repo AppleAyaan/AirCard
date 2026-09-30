@@ -54,23 +54,71 @@ from card_assets import CACHE_FILES, build_card_assets
 from aircard import (
     find_device_helper,
     get_connected_device,
+    get_all_connected_devices,
     load_saved_cards,
     save_cards,
 )
 
 
-def cmd_device():
+def cmd_device(target_udid: str | None = None):
     if not find_device_helper():
         print(json.dumps({"connected": False, "error": "device_helper_missing"}))
         return
-    device = get_connected_device()
+    device = get_connected_device(target_udid)
     if not device:
         print(json.dumps({"connected": False, "error": "no_device"}))
         return
-    probe = native("probe", device["udid"])
-    device["airlift_compatible"] = operation_ok(probe)
+    if device.get("product"):
+        try:
+            probe = native("probe", device["udid"])
+            device["airlift_compatible"] = operation_ok(probe)
+        except Exception:
+            device["airlift_compatible"] = False
+    else:
+        device["airlift_compatible"] = False
     device["connected"] = True
     print(json.dumps(device))
+
+
+def cmd_devices(target_udid: str | None = None):
+    if not find_device_helper():
+        print(json.dumps({"connected": False, "error": "device_helper_missing", "devices": []}))
+        return
+    devices = get_all_connected_devices()
+    if not devices:
+        print(json.dumps({"connected": False, "error": "no_device", "devices": []}))
+        return
+
+    active_device = None
+    if target_udid:
+        for d in devices:
+            if d["udid"] == target_udid:
+                active_device = dict(d)
+                break
+    if not active_device:
+        paired = [d for d in devices if d.get("product")]
+        active_device = dict(paired[0] if paired else devices[0])
+
+    if active_device.get("product"):
+        try:
+            probe = native("probe", active_device["udid"])
+            active_device["airlift_compatible"] = operation_ok(probe)
+        except Exception:
+            active_device["airlift_compatible"] = False
+    else:
+        active_device["airlift_compatible"] = False
+    active_device["connected"] = True
+
+    for d in devices:
+        if d["udid"] == active_device["udid"]:
+            d["airlift_compatible"] = active_device.get("airlift_compatible")
+
+    print(json.dumps({
+        "connected": True,
+        "devices": devices,
+        "selected_udid": active_device["udid"],
+        "device": active_device,
+    }))
 
 
 def cmd_get_saved_cards():
@@ -593,7 +641,11 @@ def main():
     cmd = sys.argv[1]
     norm_cmd = cmd.lstrip("-")
     if norm_cmd == "device":
-        cmd_device()
+        target = sys.argv[2] if len(sys.argv) > 2 else None
+        cmd_device(target)
+    elif norm_cmd == "devices":
+        target = sys.argv[2] if len(sys.argv) > 2 else None
+        cmd_devices(target)
     elif norm_cmd == "cards":
         cmd_get_saved_cards()
     elif norm_cmd == "save-cards" and len(sys.argv) > 2:
