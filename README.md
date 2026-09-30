@@ -118,6 +118,18 @@ for the verified environment and remaining coverage.
 
 ---
 
+## Community Resources
+
+- [AirCards](https://aircards.org/) — A free, independently maintained
+  card artwork catalog and sharing community. Browse, filter, and
+  preview designs, download PNG artwork to use with AirCard, or
+  publish your own creations for others to discover and use.
+
+These resources are maintained by the community and are not affiliated
+with the AirCard project.
+
+---
+
 ## Building from Source
 
 ```sh
