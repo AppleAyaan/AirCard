@@ -63,6 +63,7 @@ struct CardItem: Identifiable, Hashable {
     var customImageURL: URL? = nil {
         didSet { skinSignature = customImageURL.flatMap(CardItem.signature(of:)) }
     }
+    var customImage: NSImage? = nil
     /// SHA-256 of the assigned skin file; used to skip cards whose skin is already on the device.
     private(set) var skinSignature: String? = nil
     var displayName: String? = nil
@@ -2056,9 +2057,11 @@ struct WalletCardView: View {
                     return true
                 } else if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
                     provider.loadItem(forTypeIdentifier: UTType.image.identifier, options: nil) { item, _ in
-                        if let url = item as? URL, NSImage(contentsOf: url) != nil {
-                            Task { @MainActor in
-                                onDropImage(url)
+                        if let url = item as? URL {
+                            if NSImage(contentsOf: url) != nil {
+                                Task { @MainActor in
+                                    onDropImage(url)
+                                }
                             }
                         } else if let img = item as? NSImage {
                             let tempURL = FileManager.default.temporaryDirectory

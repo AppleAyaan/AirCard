@@ -26,7 +26,10 @@ class WalletCardBindingTests(unittest.TestCase):
             flags = ["-D", "LEGACY_INDEX_BINDINGS"] if os.environ.get("AIRCARD_TEST_LEGACY_BINDINGS") else []
             compiled = subprocess.run([
                 "swiftc", "-sdk", sdk, "-parse-as-library", *flags,
-                str(source), str(root / "tests/WalletCardBindingTests.swift"),
+                str(source),
+                str(root / "Sources/WalletDiscovery.swift"),
+                str(root / "Sources/WalletDiagnosticsView.swift"),
+                str(root / "tests/WalletCardBindingTests.swift"),
                 "-o", str(binary),
             ], capture_output=True, text=True)
             self.assertEqual(compiled.returncode, 0, compiled.stderr)

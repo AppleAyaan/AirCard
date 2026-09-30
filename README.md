@@ -51,8 +51,7 @@ Wallet setup, detailed troubleshooting, multi-card workflows, theme creation, co
 >   ```
 
 > [!NOTE]
-> **Windows users:** an unofficial community port with a full Simplified-Chinese UI is available at [**AirCard_zh_for_windows**](https://github.com/li000yu/AirCard_zh_for_windows) - single-file portable `.exe`, no Python or terminal required. Requires iTunes or "Apple Mobile Device Support" on the host; tested on Windows 10/11 + iOS 27.0, other versions unverified.
-> Maintained by [@li000yu](https://github.com/li000yu) and **not affiliated with or endorsed by this project.**
+> **Windows users:** an unofficial Windows port is available at [**AirCard-Windows**](https://github.com/Lumid-Off/AirCard-Windows).
 
 ---
 
