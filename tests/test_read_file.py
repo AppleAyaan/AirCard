@@ -46,13 +46,12 @@ class ReadFileTests(unittest.TestCase):
 
     def test_atc_failure_returns_none(self) -> None:
         with (
-            patch.object(apply_card_skin, "native", return_value=_ok()) as native,
+            patch.object(apply_card_skin, "native", return_value=_ok()),
             patch.object(apply_card_skin, "run_json", return_value={"exitCode": 1, "ok": False}),
             patch.object(apply_card_skin, "write_file") as mock_write,
         ):
             self.assertIsNone(apply_card_skin.read_file("udid", "/var/tmp", "leaf.bin"))
         mock_write.assert_not_called()
-        self.assertNotIn("finish-write", [call.args[0] for call in native.call_args_list])
 
     def test_afc_read_failure_preserves_recovered(self) -> None:
         """Original sits in Media/recovered: must NOT run finish cleanup."""

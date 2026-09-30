@@ -18,11 +18,6 @@ PNG_1X1 = base64.b64decode(
 
 
 class CardFlashTests(unittest.TestCase):
-    def setUp(self):
-        backup = patch.object(aircard_backend, "ensure_original_backup")
-        backup.start()
-        self.addCleanup(backup.stop)
-
     def test_cache_removal_moves_link_and_required_companion_payload(self) -> None:
         successful = {
             "exitCode": 0,
