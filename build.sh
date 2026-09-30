@@ -45,7 +45,7 @@ cat << 'EOF' > "${CONTENTS_DIR}/Info.plist"
     <key>CFBundleShortVersionString</key>
     <string>1.2.4</string>
     <key>CFBundleVersion</key>
-    <string>7</string>
+    <string>9</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>NSHighResolutionCapable</key>
@@ -73,6 +73,7 @@ cp apply_card_skin.py "$RESOURCES_DIR/"
 cp aircard.py "$RESOURCES_DIR/"
 cp aircard_backend.py "$RESOURCES_DIR/"
 cp card_assets.py "$RESOURCES_DIR/"
+cp wallet_catalog.py "$RESOURCES_DIR/"
 
 # A bundle without these cannot talk to a device at all, so fail here instead
 # of shipping an app that reports "No iPhone found" for every user.
@@ -91,8 +92,8 @@ if [ -z "${SWIFT_SDK:-}" ]; then
         SWIFT_SDK="$CLT_SWIFTUI_SDK"
     fi
 fi
-swiftc -sdk "$SWIFT_SDK" -O -parse-as-library -target arm64-apple-macosx14.0 AirCardApp.swift -o build/AirCard_arm64
-swiftc -sdk "$SWIFT_SDK" -O -parse-as-library -target x86_64-apple-macosx14.0 AirCardApp.swift -o build/AirCard_x86_64
+swiftc -sdk "$SWIFT_SDK" -O -parse-as-library -target arm64-apple-macosx14.0 AirCardApp.swift Sources/WalletDiscovery.swift Sources/WalletDiagnosticsView.swift -o build/AirCard_arm64
+swiftc -sdk "$SWIFT_SDK" -O -parse-as-library -target x86_64-apple-macosx14.0 AirCardApp.swift Sources/WalletDiscovery.swift Sources/WalletDiagnosticsView.swift -o build/AirCard_x86_64
 lipo -create -output "${MACOS_DIR}/AirCard" build/AirCard_arm64 build/AirCard_x86_64
 chmod +x "${MACOS_DIR}/AirCard"
 

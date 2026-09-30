@@ -93,8 +93,11 @@ static NSString *AirCardTraceLogLine(NSData *record) {
     NSString *image = AirCardTraceString(text + processLength, imageLength).lastPathComponent;
     NSString *message = AirCardTraceString(text + processLength + imageLength,
                                            messageLength);
-    // Keep multiline messages intact: CoreFoundation's resource lookup logs
-    // expose Wallet .pkpass paths on a continuation line on iOS 18.
+    // One stdout line must remain one activity record. iOS 27 emits some NFC
+    // selection details on continuation lines; flatten those lines so the app
+    // keeps the process context and can parse the complete event atomically.
+    message = [message stringByReplacingOccurrencesOfString:@"\r" withString:@" "];
+    message = [message stringByReplacingOccurrencesOfString:@"\n" withString:@" "];
     return [NSString stringWithFormat:@"%@(%@): %@\n", process, image, message];
 }
 

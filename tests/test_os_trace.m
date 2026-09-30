@@ -104,9 +104,10 @@ static void TestInvalidFrames(void) {
 static void TestRecords(void) {
     NSData *record = LogRecord();
     NSString *line = AirCardTraceLogLine(record);
-    assert([line hasPrefix:@"passd(CoreFoundation): Resource lookup\n"]);
+    assert([line hasPrefix:@"passd(CoreFoundation): Resource lookup "]);
     assert([line containsString:@"/Cards/AAAAAAAAAAAAAAAAAAAAAAAAAAA=.pkpass/"]);
     assert([line hasSuffix:@"actions.strings\n"]);
+    assert([line rangeOfString:@"Resource lookup\n"].location == NSNotFound);
     assert([line rangeOfString:@"\0"].location == NSNotFound);
     assert(AirCardTraceLogLine([record subdataWithRange:NSMakeRange(0, 128)]) == nil);
     assert(AirCardTraceLogLine([record subdataWithRange:NSMakeRange(0, record.length - 1)]) == nil);
